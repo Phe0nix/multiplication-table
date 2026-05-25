@@ -5,10 +5,82 @@ const resultNode = document.querySelector("#result");
 const messageNode = document.querySelector("#message");
 const clearButton = document.querySelector("#clear-button");
 const themeToggle = document.querySelector("#theme-toggle");
+const copyUrlButton = document.querySelector("#copy-url-button");
 
 const LIMIT_MIN = 1;
 const LIMIT_MAX = 100;
 const THEME_KEY = "multiplication-table-theme";
+const SUCCESS_MESSAGE_TIMEOUT = 2800;
+const URL_KEYS = {
+  base: "n",
+  range: "r",
+  theme: "theme"
+};
+let successMessageTimer;
+
+const getStoredTheme = () => {
+  try {
+    return localStorage.getItem(THEME_KEY);
+  } catch {
+    return null;
+  }
+};
+
+const setStoredTheme = (theme) => {
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // Ignore storage write errors in restricted environments.
+  }
+};
+
+const getThemeFromUrl = () => {
+  const params = new URLSearchParams(window.location.search);
+  const theme = params.get(URL_KEYS.theme);
+
+  return theme === "light" || theme === "dark" ? theme : null;
+};
+
+const updateUrlState = () => {
+  const params = new URLSearchParams(window.location.search);
+  const baseRaw = baseInput.value.trim();
+  const rangeRaw = limitInput.value.trim();
+  const base = Number(baseRaw);
+  const range = Number(rangeRaw);
+  const theme = document.body.dataset.theme === "dark" ? "dark" : "light";
+
+  if (baseRaw && Number.isFinite(base)) {
+    params.set(URL_KEYS.base, String(base));
+  } else {
+    params.delete(URL_KEYS.base);
+  }
+
+  if (Number.isInteger(range) && range >= LIMIT_MIN && range <= LIMIT_MAX) {
+    params.set(URL_KEYS.range, String(range));
+  } else {
+    params.delete(URL_KEYS.range);
+  }
+
+  params.set(URL_KEYS.theme, theme);
+
+  const query = params.toString();
+  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+  window.history.replaceState({}, "", nextUrl);
+};
+
+const restoreStateFromUrl = () => {
+  const params = new URLSearchParams(window.location.search);
+  const base = params.get(URL_KEYS.base);
+  const range = params.get(URL_KEYS.range);
+
+  if (base !== null) {
+    baseInput.value = base;
+  }
+
+  if (range !== null) {
+    limitInput.value = range;
+  }
+};
 
 const applyTheme = (theme) => {
   document.body.dataset.theme = theme;
@@ -20,7 +92,13 @@ const applyTheme = (theme) => {
 };
 
 const resolveInitialTheme = () => {
-  const storedTheme = localStorage.getItem(THEME_KEY);
+  const urlTheme = getThemeFromUrl();
+
+  if (urlTheme) {
+    return urlTheme;
+  }
+
+  const storedTheme = getStoredTheme();
 
   if (storedTheme === "light" || storedTheme === "dark") {
     return storedTheme;
@@ -30,17 +108,64 @@ const resolveInitialTheme = () => {
 };
 
 const showMessage = (text, type) => {
+  clearTimeout(successMessageTimer);
   messageNode.textContent = text;
   messageNode.className = `message show ${type}`;
+
+  if (type === "success") {
+    successMessageTimer = setTimeout(() => {
+      if (messageNode.classList.contains("success")) {
+        clearMessage();
+      }
+    }, SUCCESS_MESSAGE_TIMEOUT);
+  }
 };
 
 const clearMessage = () => {
+  clearTimeout(successMessageTimer);
   messageNode.textContent = "";
   messageNode.className = "message";
 };
 
 const renderHint = () => {
   resultNode.innerHTML = '<p class="hint">Your table will appear here.</p>';
+};
+
+const copyTextFallback = (text) => {
+  const tempTextArea = document.createElement("textarea");
+  tempTextArea.value = text;
+  tempTextArea.setAttribute("readonly", "");
+  tempTextArea.style.position = "fixed";
+  tempTextArea.style.opacity = "0";
+  document.body.appendChild(tempTextArea);
+  tempTextArea.select();
+
+  const copied = document.execCommand("copy");
+  document.body.removeChild(tempTextArea);
+
+  return copied;
+};
+
+const copyShareableUrl = async () => {
+  const shareUrl = window.location.href;
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(shareUrl);
+      showMessage("Shareable URL copied to clipboard.", "success");
+      return;
+    }
+
+    const copied = copyTextFallback(shareUrl);
+
+    if (!copied) {
+      throw new Error("Fallback clipboard copy failed.");
+    }
+
+    showMessage("Shareable URL copied to clipboard.", "success");
+  } catch {
+    showMessage("Could not copy URL automatically. Please copy it from the address bar.", "error");
+  }
 };
 
 const createRows = (base, limit) => {
@@ -85,17 +210,32 @@ const validateInputs = () => {
   return { valid: true, base, limit };
 };
 
-const generateTable = () => {
+const generateTable = (options = {}) => {
+  const { showSuccess = true, syncUrl = true } = options;
   const validation = validateInputs();
 
   if (!validation.valid) {
     showMessage(validation.message, "error");
+
+    if (syncUrl) {
+      updateUrlState();
+    }
+
     return;
   }
 
   const { base, limit } = validation;
   resultNode.innerHTML = createRows(base, limit);
-  showMessage(`Generated table for ${base} up to ${limit}.`, "success");
+
+  if (showSuccess) {
+    showMessage(`Generated table for ${base} up to ${limit}.`, "success");
+  } else {
+    clearMessage();
+  }
+
+  if (syncUrl) {
+    updateUrlState();
+  }
 };
 
 form.addEventListener("submit", (event) => {
@@ -108,7 +248,8 @@ themeToggle.addEventListener("click", () => {
   const nextTheme = currentTheme === "dark" ? "light" : "dark";
 
   applyTheme(nextTheme);
-  localStorage.setItem(THEME_KEY, nextTheme);
+  setStoredTheme(nextTheme);
+  updateUrlState();
 });
 
 clearButton.addEventListener("click", () => {
@@ -117,6 +258,11 @@ clearButton.addEventListener("click", () => {
   clearMessage();
   renderHint();
   baseInput.focus();
+  updateUrlState();
+});
+
+copyUrlButton.addEventListener("click", () => {
+  copyShareableUrl();
 });
 
 [baseInput, limitInput].forEach((input) => {
@@ -124,8 +270,22 @@ clearButton.addEventListener("click", () => {
     if (messageNode.classList.contains("error")) {
       clearMessage();
     }
+
+    updateUrlState();
   });
 });
 
+restoreStateFromUrl();
 applyTheme(resolveInitialTheme());
-renderHint();
+setStoredTheme(document.body.dataset.theme === "dark" ? "dark" : "light");
+
+if (baseInput.value.trim()) {
+  generateTable({ showSuccess: false, syncUrl: true });
+
+  if (!resultNode.querySelector(".rows")) {
+    renderHint();
+  }
+} else {
+  renderHint();
+  updateUrlState();
+}
