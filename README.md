@@ -1,2 +1,25 @@
 # Multiplication Table
-This is the simplest multiplication table you've ever use. Just enter some number and table will automatically appear. 
+
+A clean and modern multiplication table generator built with vanilla HTML, CSS, and JavaScript.
+
+## Features
+
+- Modern responsive interface for desktop and mobile
+- Accessible form inputs and result regions
+- Validated input handling with clear success and error feedback
+- Fast table generation up to 100 rows
+- Smooth entrance animation for generated rows
+
+## Usage
+
+1. Open `index.html` in your browser.
+2. Enter the base number.
+3. Set the multiplication range (1 to 100).
+4. Click **Generate** to display the table.
+5. Click **Clear** to reset the form.
+
+## Tech Stack
+
+- HTML5
+- CSS3
+- Modern JavaScript (ES6+)
